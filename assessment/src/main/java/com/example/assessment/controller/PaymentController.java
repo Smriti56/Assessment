@@ -4,6 +4,7 @@ import com.example.assessment.domain.Payment;
 import com.example.assessment.domain.PaymentRequest;
 import com.example.assessment.domain.PaymentStatus;
 import com.example.assessment.service.PaymentServiceImpl;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +22,7 @@ public class PaymentController {
     private PaymentServiceImpl paymentService;
 
     @PostMapping("/create")
-    public ResponseEntity<?> createPayment(@RequestBody PaymentRequest paymentRequest) {
+    public ResponseEntity<?> createPayment(@Valid @RequestBody PaymentRequest paymentRequest) {
         try{
             logger.info("Inside createPayment request: {}", paymentRequest);
             Payment paymentResponse = paymentService.createPayment(paymentRequest);
@@ -33,7 +34,7 @@ public class PaymentController {
     }
 
     @GetMapping("{userId}/payments/{transactionId}")
-    public ResponseEntity<?> getPaymentStatus(@PathVariable Long userId, @PathVariable String transactionId) {
+    public ResponseEntity<?> getPaymentStatus(@Valid @PathVariable Long userId, @PathVariable String transactionId) {
         logger.info("Inside getPaymentStatus request for userId: {} and transactionId: {}", userId, transactionId);
         try{
             PaymentStatus payment = paymentService.getPaymentStatus(userId, transactionId);
@@ -50,7 +51,7 @@ public class PaymentController {
     }
 
     @PutMapping("{userId}/payments/{transactionId}/stop")
-    public ResponseEntity<?> stopPayment(@PathVariable Long userId, @PathVariable String transactionId) {
+    public ResponseEntity<?> stopPayment(@Valid @PathVariable Long userId, @PathVariable String transactionId) {
         logger.info("Inside stopPayment request for userId: {} and transactionId: {}", userId, transactionId);
 
         try {

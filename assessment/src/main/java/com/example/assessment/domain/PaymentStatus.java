@@ -1,25 +1,19 @@
 package com.example.assessment.domain;
 
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
 import org.springframework.stereotype.Component;
 
+@Data
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 @Component
 public class PaymentStatus {
+
+    @NotBlank(message = "Transaction Id should not be blank")
     public String transactionId;
     public String status;
 
-    public String getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(String transactionId) {
-        this.transactionId = transactionId;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
 }

@@ -3,11 +3,15 @@ import com.example.assessment.domain.Payment;
 import com.example.assessment.domain.PaymentRequest;
 import com.example.assessment.domain.PaymentStatus;
 import com.example.assessment.domain.UserInformation;
+import com.example.assessment.exception.DatabaseException;
+import com.example.assessment.exception.PaymentNotFoundException;
+import com.example.assessment.exception.UserNotFoundException;
 import com.example.assessment.repository.PaymentRepository;
 import com.example.assessment.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import jakarta.persistence.EntityNotFoundException;
 
@@ -29,25 +33,31 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public Payment createPayment(PaymentRequest paymentRequest) {
-        logger.info("Creating payment for userId: {}", paymentRequest.getUserId());
+        try {
+            logger.info("Creating payment for userId: {}", paymentRequest.getUserId());
 
-        UserInformation user = userRepository.findById(paymentRequest.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+            UserInformation user = userRepository.findById(paymentRequest.getUserId())
+                    .orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        Payment payment = new Payment();
-        payment.setStatus("Pending");
-        payment.setPaymentAmount(paymentRequest.getPaymentAmount());
-        payment.setPaymentMethod(paymentRequest.getPaymentMethod());
-        payment.setTransactionId(UUID.randomUUID().toString());
-        payment.setTransactionDate(paymentRequest.getTransactionDate());
-        payment.setUserInformation(user);
-        payment.setBillingAddress(paymentRequest.getBillingAddress());
+            Payment payment = new Payment();
+            payment.setStatus("Pending");
+            payment.setPaymentAmount(paymentRequest.getPaymentAmount());
+            payment.setPaymentMethod(paymentRequest.getPaymentMethod());
+            payment.setTransactionId(UUID.randomUUID().toString());
+            payment.setTransactionDate(paymentRequest.getTransactionDate());
+            payment.setUserInformation(user);
+            payment.setBillingAddress(paymentRequest.getBillingAddress());
+            logger.info("Payment created successfully. Payment ID: {}", payment.getId());
 
-        notificationService.notifyUser(payment, user);
+            // Save payment to the database
+            Payment paymentResponse = paymentRepository.save(payment);
+            return paymentResponse;
+        } catch (DataAccessException ex) {
+            // Log the exception and rethrow a more specific exception
+            logger.error("Database exception during payment creation: {}", ex.getMessage());
+            throw new DatabaseException("Error creating payment. Please try again later.", ex);
+        }
 
-        logger.info("Payment created successfully. Payment ID: {}", payment.getId());
-
-        return paymentRepository.save(payment);
     }
 
     @Override
@@ -55,7 +65,7 @@ public class PaymentServiceImpl implements PaymentService {
         logger.info("Retrieving payment status for userId: {} and transactionId: {}", userId, transactionId);
 
         UserInformation user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         Payment payment = paymentRepository.findByTransactionId(transactionId);
 
@@ -78,19 +88,24 @@ public class PaymentServiceImpl implements PaymentService {
         logger.info("Stopping payment for userId: {} and transactionId: {}", userId, transactionId);
 
         UserInformation user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        Payment payment = paymentRepository.findByTransactionId(transactionId);
+        try {
+            Payment payment = paymentRepository.findByTransactionId(transactionId);
 
-        if (payment != null) {
-            payment.setStatus("Stop");
+            if (payment != null) {
+                payment.setStatus("Stop");
+                logger.info("Payment stopped successfully. Payment ID: {}", payment.getId());
 
-            logger.info("Payment stopped successfully. Payment ID: {}", payment.getId());
+                return paymentRepository.save(payment);
+            } else {
+                logger.error("Payment not found for userId: {} and transactionId: {}", userId, transactionId);
+                throw new PaymentNotFoundException("Payment with id " + transactionId + " not found");
+            }
+        } catch (DataAccessException ex) {
 
-            return paymentRepository.save(payment);
-        } else {
-            logger.error("Payment not found for userId: {} and transactionId: {}", userId, transactionId);
-            throw new EntityNotFoundException("Payment with id " + transactionId + " not found");
+            logger.error("Database exception during payment stopping: {}", ex.getMessage());
+            throw new DatabaseException("Error stopping payment. Please try again later.", ex);
         }
     }
 }

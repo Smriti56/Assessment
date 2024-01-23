@@ -1,23 +1,30 @@
 package com.example.assessment.service;
-
-import com.example.assessment.domain.*;
+import com.example.assessment.domain.Payment;
+import com.example.assessment.domain.PaymentRequest;
+import com.example.assessment.domain.PaymentStatus;
+import com.example.assessment.domain.UserInformation;
+import com.example.assessment.exception.DatabaseException;
+import com.example.assessment.exception.PaymentNotFoundException;
+import com.example.assessment.exception.UserNotFoundException;
 import com.example.assessment.repository.PaymentRepository;
 import com.example.assessment.repository.UserRepository;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
+import org.springframework.dao.DataAccessException;
+import jakarta.persistence.EntityNotFoundException;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
-import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-public class PaymentServiceImplTest {
+class PaymentServiceImplTest {
 
     @Mock
     private PaymentRepository paymentRepository;
@@ -31,83 +38,167 @@ public class PaymentServiceImplTest {
     @InjectMocks
     private PaymentServiceImpl paymentService;
 
-    @Before
-    public void setUp() {
-        MockitoAnnotations.initMocks(this);
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
-    public void testCreatePayment() {
-        PaymentRequest paymentRequest = createPaymentRequest();
-        UserInformation user = createUser();
-        when(userRepository.findById(anyLong())).thenReturn(Optional.of(user));
-        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArguments()[0]);
-
-        Payment createdPayment = paymentService.createPayment(paymentRequest);
-
-        assertEquals("Pending", createdPayment.getStatus());
-        verify(notificationService).notifyUser(createdPayment, user);
-    }
-
-    @Test
-    public void testGetPaymentStatus() {
-        // Mocking
-        Long userId = 123L;
-        String transactionId = "xyz123";
-        UserInformation user = createUser();
-        Payment payment = createPayment(user);
-        when(userRepository.findById(anyLong())).thenReturn(Optional.of(user));
-        when(paymentRepository.findByTransactionId(anyString())).thenReturn(payment);
-
-        PaymentStatus paymentStatus = paymentService.getPaymentStatus(userId, transactionId);
-
-        assertEquals(transactionId, paymentStatus.getTransactionId());
-        assertEquals("Ongoing", paymentStatus.getStatus());
-    }
-
-    @Test
-    public void testStopPayment() {
-        // Mocking
-        Long userId = 123L;
-        String transactionId = "xyz123";
-        UserInformation user = createUser();
-        Payment payment = createPayment(user);
-        when(userRepository.findById(anyLong())).thenReturn(Optional.of(user));
-        when(paymentRepository.findByTransactionId(anyString())).thenReturn(payment);
-        when(paymentRepository.save(any())).thenAnswer(invocation -> invocation.getArguments()[0]);
-
-        Payment stoppedPayment = paymentService.stopPayment(userId, transactionId);
-
-        assertEquals("Stop", stoppedPayment.getStatus());
-    }
-
-    // Helper methods to create test data
-    private PaymentRequest createPaymentRequest() {
+    void testCreatePayment() {
+        // Arrange
         PaymentRequest paymentRequest = new PaymentRequest();
         paymentRequest.setUserId(1L);
         paymentRequest.setPaymentAmount(100.0);
         paymentRequest.setPaymentMethod("Credit Card");
-        paymentRequest.setTransactionDate(LocalDateTime.now());
-        paymentRequest.setBillingAddress(new BillingAddress("123 Main St", "Cityville", "CA", "12345"));
-        return paymentRequest;
-    }
+        paymentRequest.setTransactionDate("2022-01-20");
+        paymentRequest.setBillingAddress("123 Main St");
 
-    private UserInformation createUser() {
         UserInformation user = new UserInformation();
         user.setUserId(1L);
-        user.setUserEmail("john.doe@example.com");
-        return user;
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(paymentRepository.save(any(Payment.class))).thenReturn(createSamplePayment());
+
+        // Act
+        Payment payment = paymentService.createPayment(paymentRequest);
+
+        // Assert
+        assertNotNull(payment);
+        assertEquals("Pending", payment.getStatus());
+        assertEquals("Credit Card", payment.getPaymentMethod());
+        assertNotNull(payment.getTransactionId());
+        assertEquals("2022-01-20", payment.getTransactionDate());
+        assertEquals(user, payment.getUserInformation());
     }
 
-    private Payment createPayment(UserInformation user) {
+    @Test
+    void testCreatePaymentUserNotFound() {
+        // Arrange
+        PaymentRequest paymentRequest = new PaymentRequest();
+        paymentRequest.setUserId(1L);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+        // Act and Assert
+        assertThrows(UserNotFoundException.class, () -> paymentService.createPayment(paymentRequest));
+    }
+
+    @Test
+    void testCreatePaymentDatabaseException() {
+        // Arrange
+        PaymentRequest paymentRequest = new PaymentRequest();
+        paymentRequest.setUserId(1L);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(new UserInformation()));
+        when(paymentRepository.save(any(Payment.class))).thenThrow(new DataAccessException("Database error") {});
+
+        // Act and Assert
+        assertThrows(DatabaseException.class, () -> paymentService.createPayment(paymentRequest));
+    }
+
+    @Test
+    void testGetPaymentStatus() {
+        // Arrange
+        Long userId = 1L;
+        String transactionId = "abc123";
+
+        UserInformation user = new UserInformation();
+        user.setUserId(userId);
+
+        Payment payment = createSamplePayment();
+        payment.setTransactionId(transactionId);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(paymentRepository.findByTransactionId(transactionId)).thenReturn(payment);
+
+        // Act
+        PaymentStatus paymentStatus = paymentService.getPaymentStatus(userId, transactionId);
+
+        // Assert
+        assertNotNull(paymentStatus);
+        assertEquals(transactionId, paymentStatus.getTransactionId());
+        assertEquals("Pending", paymentStatus.getStatus());
+    }
+
+    @Test
+    void testGetPaymentStatusUserNotFound() {
+        // Arrange
+        Long userId = 1L;
+        String transactionId = "abc123";
+
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        // Act and Assert
+        assertThrows(UserNotFoundException.class, () -> paymentService.getPaymentStatus(userId, transactionId));
+    }
+
+
+    @Test
+    void testStopPayment() {
+        // Arrange
+        Long userId = 1L;
+        String transactionId = "abc123";
+
+        UserInformation user = new UserInformation();
+        user.setUserId(userId);
+
+        Payment payment = createSamplePayment();
+        payment.setTransactionId(transactionId);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(paymentRepository.findByTransactionId(transactionId)).thenReturn(payment);
+        when(paymentRepository.save(any(Payment.class))).thenReturn(payment);
+
+        // Act
+        Payment stoppedPayment = paymentService.stopPayment(userId, transactionId);
+
+        // Assert
+        assertNotNull(stoppedPayment);
+        assertEquals("Stop", stoppedPayment.getStatus());
+        assertEquals(transactionId, stoppedPayment.getTransactionId());
+    }
+
+    @Test
+    void testStopPaymentUserNotFound() {
+        // Arrange
+        Long userId = 1L;
+        String transactionId = "abc123";
+
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        // Act and Assert
+        assertThrows(UserNotFoundException.class, () -> paymentService.stopPayment(userId, transactionId));
+    }
+
+
+    @Test
+    void testStopPaymentDatabaseException() {
+        // Arrange
+        Long userId = 1L;
+        String transactionId = "abc123";
+
+        UserInformation user = new UserInformation();
+        user.setUserId(userId);
+
+        Payment payment = createSamplePayment();
+        payment.setTransactionId(transactionId);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(paymentRepository.findByTransactionId(transactionId)).thenReturn(payment);
+        when(paymentRepository.save(any(Payment.class))).thenThrow(new DataAccessException("Database error") {});
+
+        // Act and Assert
+        assertThrows(DatabaseException.class, () -> paymentService.stopPayment(userId, transactionId));
+    }
+
+    private Payment createSamplePayment() {
         Payment payment = new Payment();
-        payment.setStatus("Ongoing");
+        payment.setStatus("Pending");
         payment.setPaymentAmount(100.0);
         payment.setPaymentMethod("Credit Card");
-        payment.setTransactionId("xyz123");
-        payment.setTransactionDate(LocalDateTime.now());
-        payment.setUserInformation(user);
-        payment.setBillingAddress(new BillingAddress("123 Main St", "Cityville", "CA", "12345"));
+        payment.setTransactionId(UUID.randomUUID().toString());
+        payment.setTransactionDate("2022-01-20");
+        payment.setBillingAddress("123 Main St");
         return payment;
     }
 }
