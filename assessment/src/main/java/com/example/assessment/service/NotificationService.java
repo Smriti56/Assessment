@@ -22,8 +22,8 @@ public class NotificationService {
         this.javaMailSender = javaMailSender;
     }
 
-    public void notifyUser(Payment payment, UserInformation userInformation){
-        logger.info("Sending mail to userId: {} ", userInformation.getUserId());
+    public void notifyUser(Payment payment){
+        logger.info("Sending mail to userId: {} ", payment.getUserInformation().getUserId());
 
         SimpleMailMessage emailNotification = new SimpleMailMessage();
         emailNotification.setText("<!DOCTYPE html>\n" +
@@ -40,7 +40,7 @@ public class NotificationService {
                 "    <p>We are writing to inform you about a recent payment transaction:</p>\n" +
                 "    \n" +
                 "    <ul>\n" +
-                "        <li><strong>User ID:</strong> "+ userInformation.getUserId() + "</li>\n" +
+                "        <li><strong>User ID:</strong> "+ payment.getUserInformation().getUserId() + "</li>\n" +
                 "        <li><strong>Amount:</strong> "+ payment.getPaymentAmount() + "</li>\n" +
                 "        <li><strong>Transaction Date:</strong> "+ payment.getTransactionDate() + "</li>\n" +
                 "        <li><strong>Transaction Method:</strong> "+ payment.getPaymentMethod() + "</li>\n" +
@@ -52,7 +52,7 @@ public class NotificationService {
                 "</body>\n" +
                 "</html>\n");
         emailNotification.setSubject("Your receipt for payment on " + payment.getTransactionDate());
-        emailNotification.setTo(userInformation.getUserEmail());
+        emailNotification.setTo(payment.getUserInformation().getUserEmail());
         //javaMailSender.send(emailNotification);
     }
 }

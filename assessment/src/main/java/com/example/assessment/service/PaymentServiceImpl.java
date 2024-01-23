@@ -49,9 +49,15 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setBillingAddress(paymentRequest.getBillingAddress());
             logger.info("Payment created successfully. Payment ID: {}", payment.getId());
 
-            // Save payment to the database
+
             Payment paymentResponse = paymentRepository.save(payment);
-            return paymentResponse;
+            if (paymentResponse != null && paymentResponse.getId() != null) {
+                notificationService.notifyUser(paymentResponse);
+                return paymentResponse;
+            } else {
+                logger.error("Failed to save payment to the database.");
+                throw new DatabaseException("Error creating payment. Please try again later.");
+            }
         } catch (DataAccessException ex) {
             // Log the exception and rethrow a more specific exception
             logger.error("Database exception during payment creation: {}", ex.getMessage());
